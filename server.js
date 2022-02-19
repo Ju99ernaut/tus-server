@@ -1,6 +1,8 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
+const pjson = require('./package.json');
 const assert = require('assert');
 
 const Server = require('tus-node-server').Server;
@@ -45,8 +47,45 @@ switch (data_store) {
         });
 }
 
+/**
+ * Basic GET handler to serve statci files
+ * 
+ * @param {Object} req http.incomingMessage
+ * @param {Object} res http.ServerResponse
+ */
+const writeFile = (req, res) => {
+    let filename = req.url;
+    if (filename == '/') {
+        filename = '/index.html';
+    }
+
+    filename = path.join(process.cwd(), filename);
+
+    fs.readFile(filename, 'binary', (err, file) => {
+        if (err) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.write(err);
+            res.end();
+            return;
+        }
+
+        // Update version
+        file = file.replace('version', `v${pjson.version}`);
+
+        res.writeHead(200);
+        res.write(file);
+        res.end();
+    });
+}
+
+server.get('/', writeFile);
+server.get('/index.html', writeFile);
+
 server.on(EVENTS.EVENT_UPLOAD_COMPLETE, (event) => {
     console.log(`[${new Date().toLocaleTimeString()}] [EVENT HOOK] Upload complete for file ${event.file.id}`);
+});
+server.on(EVENTS.EVENT_FILE_DELETED, (event) => {
+    console.log(`[${new Date().toLocaleTimeString()}] [EVENT HOOK] Delete complete for file ${event.file.id}`);
 });
 
 // // this is the express stile ;)
@@ -57,8 +96,8 @@ server.on(EVENTS.EVENT_UPLOAD_COMPLETE, (event) => {
 // app.use('/uploads', uploadApp);
 // app.get('*', writeFile);
 
-const host = '127.0.0.1';
-const port = 1080;
+const host = process.env.TUS_HOST || '127.0.0.1';
+const port = parseInt(process.env.PORT) || 1080;
 server.listen({ host, port }, () => {
     console.log(`[${new Date().toLocaleTimeString()}] tus server listening at http://${host}:${port} using ${data_store}`);
 });
